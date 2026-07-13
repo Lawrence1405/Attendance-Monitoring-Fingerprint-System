@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>FPTester</AssemblyName>
+    <RootNamespace>FPTester</RootNamespace>
+    <!--
+      x86 is required because ftrScanAPI.dll from the Enrollment Kit is 32-bit.
+      ftrSDKHelper13.dll is 64-bit and is NO LONGER used — we removed it
+      entirely in favour of SourceAFIS (pure .NET, no native DLL dependency
+      for matching).
+    -->
+    <PlatformTarget>x86</PlatformTarget>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RuntimeIdentifiers>win-x86</RuntimeIdentifiers>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+
+  <!--
+    SourceAFIS: pure C# fingerprint matching library (MIT/Apache licensed).
+    Replaces the broken FTRAPI.dll / ftrSDKHelper13.dll entirely.
+    We still use ftrScanAPI.dll (from the 2025 Enrollment Kit) for raw image
+    capture — but matching is now done 100% in managed .NET code.
+  -->
+  <ItemGroup>
+    <PackageReference Include="SourceAFIS" Version="3.14.0" />
+  </ItemGroup>
+
+  <!--
+    Copy ftrScanAPI.dll from the Enrollment Kit next to the .exe at build time.
+    This means the app always finds it without hardcoding a path or requiring
+    the user to have the Enrollment Kit installed in a specific location.
+    UPDATE this path if your Enrollment Kit is in a different folder.
+  -->
+  <ItemGroup>
+    <Content Include="C:\Users\Dale Barro\Downloads\FS6x_Enrollment_Kit_2025.11.06\FS6x_Enrollment_Kit_2025.11.06\ftrScanAPI.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>ftrScanAPI.dll</Link>
+    </Content>
+  </ItemGroup>
+
+</Project>

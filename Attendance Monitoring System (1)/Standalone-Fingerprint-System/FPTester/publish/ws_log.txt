@@ -1,0 +1,19 @@
+[10:23:27] StartAsync called — using TcpListener
+[10:23:27] TcpListener started on port 5000
+[10:28:57] StartAsync called — using TcpListener
+[10:28:57] TcpListener started on port 5000
+[10:29:05] WebSocket client connected
+[10:29:05] Client connected.
+[10:29:05] Received: {"action":"start_scan"}
+[10:29:14] Scan cancelled.
+[10:29:14] Client disconnected.
+[10:29:16] WebSocket client connected
+[10:29:16] Client connected.
+[10:29:16] Received: {"action":"start_scan"}
+[10:29:26] Scan cancelled.
+[10:29:26] Client disconnected.
+[10:29:27] WebSocket client connected
+[10:29:27] Client connected.
+[10:29:29] Received: {"action":"start_scan"}
+[10:29:32] Scan cancelled.
+[10:29:32] Client disconnected.
