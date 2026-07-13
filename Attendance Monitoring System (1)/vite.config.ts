@@ -33,4 +33,12 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost/Attendance-Monitoring-Fingerprint-System-Lawrence1405-patch-1-07-08-26-',
+        changeOrigin: true,
+      },
+    },
+  },
 })

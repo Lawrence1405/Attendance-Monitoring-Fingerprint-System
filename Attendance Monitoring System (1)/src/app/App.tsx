@@ -95,6 +95,7 @@ interface AttendanceRecord {
   date: string;
   time: string;
   verifiedBy: string;
+  status?: "Present" | "Absent" | "Blank" | string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -178,9 +179,21 @@ function buildInitialAttendance(): AttendanceRecord[] {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function cellStatus(clientId: string, mi: number, recs: AttendanceRecord[], year: number = YEAR): "P"|"A"|"-" {
+function cellStatus(client: Client, mi: number, recs: AttendanceRecord[], year: number = YEAR): "P"|"A"|"-" {
   const prefix = `${year}-${String(mi+1).padStart(2,"0")}`;
-  if (recs.some(r=>r.clientId===clientId && r.date.startsWith(prefix))) return "P";
+  const rec = recs.find(r=>r.clientId===client.clientId && r.date.startsWith(prefix));
+  if (rec) {
+    if (rec.status === "Absent") return "A";
+    if (rec.status === "Blank") return "-";
+    return "P"; // default Present
+  }
+  // Check if before supervision start
+  if (client.supervisionStart) {
+    const [sy, sm] = client.supervisionStart.split("-").map(Number);
+    if (year < sy || (year === sy && mi + 1 < sm)) {
+      return "-"; // Blank if before supervision start
+    }
+  }
   const curYear = _today.getFullYear();
   if (year < curYear) return "A";
   if (year === curYear && mi < CUR_M) return "A";
@@ -238,11 +251,21 @@ function computeAge(dob: string): string {
   return isNaN(age) ? "—" : String(age);
 }
 
-const MONTHLY_CHART_DATA = [
-  {month:"Jan",attended:78,total:92},{month:"Feb",attended:82,total:92},
-  {month:"Mar",attended:69,total:92},{month:"Apr",attended:88,total:92},
-  {month:"May",attended:91,total:92},{month:"Jun",attended:85,total:92},
-];
+// Dynamic monthly chart data function
+function getMonthlyChartData(clients: Client[], recs: AttendanceRecord[], year: number) {
+  const activeClients = clients.filter(c => c.status === "Active");
+  const total = activeClients.length;
+  const data = [];
+  for (let mi = 0; mi < 12; mi++) {
+    const prefix = `${year}-${String(mi+1).padStart(2,"0")}`;
+    const attended = activeClients.filter(c => {
+      const rec = recs.find(r => r.clientId === c.clientId && r.date.startsWith(prefix));
+      return rec && rec.status !== "Absent" && rec.status !== "Blank";
+    }).length;
+    data.push({ month: MONTHS[mi], attended, total });
+  }
+  return data;
+}
 
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 function Badge({status}:{status:string}) {
@@ -405,17 +428,50 @@ function Sidebar({page,setPage,onLogout,collapsed,setCollapsed}:{
 // ── Client Info Modal (enhanced — 4 tabs) ──────────────────────────────────────
 type InfoTab = "summary"|"personal"|"case"|"fingerprint";
 
-function ClientInfoModal({client,recs,onClose,onEdit}:{client:Client;recs:AttendanceRecord[];onClose:()=>void;onEdit?:()=>void}) {
+function ClientInfoModal({client,recs,onClose,onEdit,updateRec,addRec}:{client:Client;recs:AttendanceRecord[];onClose:()=>void;onEdit?:()=>void;updateRec?:(id:string,st:string)=>void;addRec?:(r:AttendanceRecord)=>void}) {
   const [tab,setTab] = useState<InfoTab>("summary");
   const [fpAction,setFpAction] = useState<string|null>(null);
+  const [fpStatus,setFpStatus] = useState<string|null>(null);
+  const [fpError,setFpError] = useState<string|null>(null);
+
+  const handleFpConfirm = () => {
+    if (!fpAction) return;
+    setFpStatus("connecting");
+    setFpError(null);
+    const socket = new WebSocket("ws://localhost:5000/");
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        action: fpAction === "remove" ? "remove_fingerprint" : "enroll_fingerprint",
+        clientId: client.clientId
+      }));
+    };
+    socket.onmessage = (e) => {
+      const res = JSON.parse(e.data);
+      if (res.status) {
+        setFpStatus(res.status);
+      } else if (res.success) {
+        setFpStatus("success");
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setFpError(res.error || "An unknown error occurred.");
+        setFpStatus(null);
+      }
+    };
+    socket.onerror = () => {
+      setFpError("Failed to connect to scanner service.");
+      setFpStatus(null);
+    };
+  };
   const clientRecs = recs.filter(r=>r.clientId===client.clientId);
   const st = supStatus(client);
   const curMonthPrefix = `${YEAR}-${String(CUR_M+1).padStart(2,"0")}`;
   const attendedThisMonth = clientRecs.some(r=>r.date.startsWith(curMonthPrefix));
 
   // Years to show in supervision history
-  const supStartYear = client.supervisionStart ? parseInt(client.supervisionStart.slice(0,4)) : YEAR;
-  const matrixYears = Array.from({length:YEAR-supStartYear+1},(_,i)=>supStartYear+i).filter(y=>y<=YEAR);
+  const supStartYear = client.supervisionStart ? parseInt(client.supervisionStart.slice(0,4)) : _today.getFullYear();
+  const supEndYear = client.supervisionEnd ? parseInt(client.supervisionEnd.slice(0,4)) : _today.getFullYear();
+  const maxYear = Math.max(_today.getFullYear(), supEndYear);
+  const matrixYears = Array.from({length:maxYear-supStartYear+1},(_,i)=>supStartYear+i);
 
   const tabs: {id:InfoTab;label:string;icon:React.ElementType}[] = [
     {id:"summary",label:"Summary",icon:User},
@@ -509,7 +565,7 @@ function ClientInfoModal({client,recs,onClose,onEdit}:{client:Client;recs:Attend
                 <p className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground mb-2">{YEAR} Monthly Attendance</p>
                 <div className="grid grid-cols-6 gap-1">
                   {MONTHS.map((m,mi)=>{
-                    const st2 = cellStatus(client.clientId,mi,clientRecs,YEAR);
+                    const st2 = cellStatus(client,mi,clientRecs,YEAR);
                     return (
                       <div key={m} className={`rounded p-1.5 text-center ${st2==="P"?"bg-emerald-100 border border-emerald-300":st2==="A"?"bg-red-100 border border-red-200":"bg-muted border border-border"}`}>
                         <div className="text-[9px] font-mono text-muted-foreground">{m}</div>
@@ -601,12 +657,30 @@ function ClientInfoModal({client,recs,onClose,onEdit}:{client:Client;recs:Attend
                         <tr key={m} className="hover:bg-muted/20">
                           <td className="px-3 py-1.5 font-mono font-semibold text-foreground">{m}</td>
                           {matrixYears.map(y=>{
-                            const st3 = cellStatus(client.clientId,mi,clientRecs,y);
+                            const st3 = cellStatus(client,mi,clientRecs,y);
+                            const toggleStatus = () => {
+                              if (!addRec || !updateRec) return;
+                              const prefix = `${y}-${String(mi+1).padStart(2,"0")}`;
+                              const rec = clientRecs.find(r=>r.date.startsWith(prefix));
+                              if (rec) {
+                                if (rec.status === "Present" || !rec.status) updateRec(rec.attendanceId, "Absent");
+                                else if (rec.status === "Absent") updateRec(rec.attendanceId, "Blank");
+                                else updateRec(rec.attendanceId, "Present");
+                              } else {
+                                const newDate = `${prefix}-01`;
+                                const now = new Date();
+                                const t = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+                                addRec({attendanceId:`ATT-MATRIX-${Date.now()}`,clientId:client.clientId,fullName:client.fullName,
+                                  caseNumber:client.ccNumber,docketNumber:client.docketNumber,date:newDate,time:t,verifiedBy:"Matrix Edit",status:"Present"});
+                              }
+                            };
                             return (
                               <td key={y} className="px-3 py-1.5 text-center">
-                                {st3==="P" && <span className="w-5 h-5 rounded bg-emerald-100 border border-emerald-300 flex items-center justify-center mx-auto text-emerald-700 font-bold">P</span>}
-                                {st3==="A" && <span className="w-5 h-5 rounded bg-red-100 border border-red-200 flex items-center justify-center mx-auto text-red-600 font-bold">A</span>}
-                                {st3==="-" && <span className="text-muted-foreground font-mono">—</span>}
+                                <button onClick={toggleStatus} disabled={!addRec} className={`w-full h-full min-w-[24px] min-h-[24px] flex items-center justify-center mx-auto ${addRec?"cursor-pointer hover:opacity-80":""}`}>
+                                  {st3==="P" && <span className="w-5 h-5 rounded bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 font-bold">P</span>}
+                                  {st3==="A" && <span className="w-5 h-5 rounded bg-red-100 border border-red-200 flex items-center justify-center text-red-600 font-bold">A</span>}
+                                  {st3==="-" && <span className="text-muted-foreground font-mono">—</span>}
+                                </button>
                               </td>
                             );
                           })}
@@ -661,12 +735,25 @@ function ClientInfoModal({client,recs,onClose,onEdit}:{client:Client;recs:Attend
                     {fpAction==="update" && "Place client's right thumb on the scanner to update the fingerprint template."}
                     {fpAction==="remove" && "Confirm removal of the enrolled fingerprint template for this client."}
                   </p>
-                  <div className="flex gap-2">
-                    <button onClick={()=>setFpAction(null)} className="flex-1 py-1.5 text-xs rounded border border-border font-semibold hover:bg-muted">Cancel</button>
-                    <button onClick={()=>setFpAction(null)} className={`flex-1 py-1.5 text-xs rounded font-bold text-white ${fpAction==="remove"?"bg-red-600":"bg-sky-600"}`}>
-                      {fpAction==="register"?"Confirm Enrollment":fpAction==="update"?"Confirm Update":"Confirm Removal"}
-                    </button>
-                  </div>
+                  
+                  {fpError && <div className="text-xs text-red-600 bg-red-100 p-2 rounded mb-2 border border-red-200">{fpError}</div>}
+                  
+                  {fpStatus ? (
+                    <div className="flex items-center justify-center p-2 text-xs font-bold text-sky-700 bg-sky-100 rounded border border-sky-200">
+                      {fpStatus === "success" ? "Success! Reloading..." : 
+                       fpStatus === "connecting" ? "Connecting to scanner..." :
+                       fpStatus === "scanning" ? "Waiting for finger..." :
+                       fpStatus === "processing" ? "Processing template..." :
+                       "Status: " + fpStatus}
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button onClick={()=>{setFpAction(null);setFpError(null);}} className="flex-1 py-1.5 text-xs rounded border border-border font-semibold hover:bg-muted">Cancel</button>
+                      <button onClick={handleFpConfirm} className={`flex-1 py-1.5 text-xs rounded font-bold text-white ${fpAction==="remove"?"bg-red-600":"bg-sky-600"}`}>
+                        {fpAction==="register"?"Confirm Enrollment":fpAction==="update"?"Confirm Update":"Confirm Removal"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="bg-muted rounded p-3">
@@ -823,7 +910,7 @@ function ClientFormModal({client,onSave,onClose,nextId}:{client?:Client;onSave:(
                 {inp("Date FR/SR/RR/TR Submitted","dateFrSubmitted",{type:"date"})}{inp("Date of TORO","dateOfToro",{type:"date"})}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {inp("Date Received","dateReceivedCase",{type:"date"})}{inp("Investigating Officer","investigatingOfficer")}
+                {inp("Date Received","dateReceivedCase",{type:"date"})}{sel("Investigating Officer","investigatingOfficer",[""].concat(OFFICERS))}
               </div>
             </>}
 
@@ -1202,7 +1289,7 @@ function DashboardPage({clients,recs,setPage}:{clients:Client[];recs:AttendanceR
               <button onClick={()=>setPage("reports")} className="text-[11px] text-sky-600 hover:underline font-semibold">Full Report →</button>
             </div>
             <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={MONTHLY_CHART_DATA} barCategoryGap="35%">
+              <BarChart data={getMonthlyChartData(clients, recs, YEAR).slice(0, CUR_M + 1)} barCategoryGap="35%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4eaf2" />
                 <XAxis dataKey="month" tick={{fontSize:11,fill:"#5d7290",fontFamily:"JetBrains Mono"}} axisLine={false} tickLine={false} />
                 <YAxis tick={{fontSize:11,fill:"#5d7290",fontFamily:"JetBrains Mono"}} axisLine={false} tickLine={false} />
@@ -1245,10 +1332,11 @@ function DashboardPage({clients,recs,setPage}:{clients:Client[];recs:AttendanceR
 // ══════════════════════════════════════════════════════════════════════════════
 // ATTENDANCE
 // ══════════════════════════════════════════════════════════════════════════════
-function AttendancePage({clients,recs,addRec}:{clients:Client[];recs:AttendanceRecord[];addRec:(r:AttendanceRecord)=>void}) {
-  type ScanState="idle"|"scanning"|"confirm"|"recorded"|"duplicate"|"notfound";
+function AttendancePage({clients,recs,addRec,updateRec}:{clients:Client[];recs:AttendanceRecord[];addRec:(r:AttendanceRecord)=>void;updateRec:(id:string,status:string)=>void}) {
+  type ScanState="idle"|"connecting"|"scanning"|"confirm"|"recorded"|"duplicate"|"notfound"|"disconnected";
   const [state,setState] = useState<ScanState>("idle");
   const [matched,setMatched] = useState<Client|null>(null);
+  const [scanError,setScanError] = useState("");
   const [pendingTime,setPendingTime] = useState("");
   const [scanIdx,setScanIdx] = useState(0);
   const [showManual,setShowManual] = useState(false);
@@ -1260,30 +1348,105 @@ function AttendancePage({clients,recs,addRec}:{clients:Client[];recs:AttendanceR
   const [viewDate,setViewDate] = useState(todayStr);
   const [infoClient,setInfoClient] = useState<Client|null>(null);
 
+  const ws = useRef<WebSocket | null>(null);
+  const clientsRef = useRef(clients);
+  const recsRef = useRef(recs);
+  useEffect(() => { clientsRef.current = clients; }, [clients]);
+  useEffect(() => { recsRef.current = recs; }, [recs]);
+
+  useEffect(() => {
+    const connect = () => {
+      ws.current = new WebSocket("ws://localhost:5000/");
+      ws.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.status === "connecting") {
+            setState("connecting");
+          } else if (data.status === "scanner_ready") {
+            // Hardware confirmed connected, will transition to scanning next
+          } else if (data.status === "scanning") {
+            setState("scanning");
+          } else if (data.success && data.match) {
+            const client = clientsRef.current.find(c => c.clientId === data.clientId);
+            if (client) {
+              const todayRecs = recsRef.current.filter(r=>r.date===todayStr);
+              if (todayRecs.some(r=>r.clientId===client.clientId)) {
+                setMatched(client);
+                setState("duplicate");
+              } else {
+                const now=new Date();
+                const t=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+                setMatched(client); setPendingTime(t); setState("confirm");
+              }
+            } else {
+              setState("notfound");
+            }
+          } else if (data.success && !data.match) {
+            setState("notfound");
+          } else if (data.success === false) {
+            console.error("Scanner Error:", data.error);
+            if (data.error_type === "scanner_not_connected") {
+              setScanError(data.error || "Fingerprint scanner is not connected. Please plug in the Futronic FS64 and try again.");
+              setState("disconnected");
+            } else {
+              setState("notfound");
+            }
+          }
+        } catch (e) {
+          console.error("WS parse error", e);
+        }
+      };
+    };
+    connect();
+    return () => {
+      if (ws.current) ws.current.close();
+    };
+  }, []);
+
+
   const todayRecs = recs.filter(r=>r.date===todayStr);
   const viewRecs = recs.filter(r=>r.date===viewDate);
 
   const doScan = () => {
-    setState("scanning"); setMatched(null);
-    const activeClients = clients.filter(c=>c.status==="Active" && c.supervisionEnd >= todayStr);
-    setTimeout(()=>{
-      const roll=Math.random();
-      const unscanned=activeClients.filter(c=>!todayRecs.find(r=>r.clientId===c.clientId));
-      if (unscanned.length>0&&roll<0.8) {
-        const client=unscanned[scanIdx%unscanned.length];
-        const now=new Date();
-        const t=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-        setMatched(client); setPendingTime(t); setState("confirm"); setScanIdx(i=>i+1);
-      } else if (roll<0.9&&todayRecs.length>0) {
-        setMatched(clients.find(c=>todayRecs.some(r=>r.clientId===c.clientId))??null); setState("duplicate");
-      } else { setState("notfound"); }
-    },2200);
+    setState("connecting"); setMatched(null); setScanError("");
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ action: "start_scan" }));
+    } else {
+      console.error("WebSocket not connected. Trying to reconnect...");
+      ws.current = new WebSocket("ws://localhost:5000/");
+      ws.current.onopen = () => {
+        ws.current!.send(JSON.stringify({ action: "start_scan" }));
+      };
+      ws.current.onerror = () => {
+        setScanError("Cannot connect to the fingerprint service. Make sure FPTester.exe is running.");
+        setState("disconnected");
+      };
+      ws.current.onmessage = (event) => {
+        // Re-dispatch to the main handler
+        try {
+          const data = JSON.parse(event.data);
+          if (data.status === "connecting") setState("connecting");
+          else if (data.status === "scanning") setState("scanning");
+          else if (data.success === false && data.error_type === "scanner_not_connected") {
+            setScanError(data.error || "Scanner not connected.");
+            setState("disconnected");
+          }
+        } catch {}
+      };
+    }
+  };
+
+  const cancelScan = () => {
+    setState("idle");
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ action: "stop_scan" }));
+    }
   };
 
   const confirmAttendance = () => {
     if (!matched) return;
     addRec({attendanceId:`ATT-NEW-${Date.now()}`,clientId:matched.clientId,fullName:matched.fullName,
-      caseNumber:matched.ccNumber,docketNumber:matched.docketNumber,date:todayStr,time:pendingTime,verifiedBy:"Futronic FS64"});
+      caseNumber:matched.ccNumber,docketNumber:matched.docketNumber,date:todayStr,time:pendingTime,verifiedBy:"Futronic FS64",status:"Present"});
     setState("recorded");
   };
 
@@ -1299,7 +1462,7 @@ function AttendancePage({clients,recs,addRec}:{clients:Client[];recs:AttendanceR
     const now=new Date();
     const t=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
     addRec({attendanceId:`ATT-MANUAL-${Date.now()}`,clientId:manualClient.clientId,fullName:manualClient.fullName,
-      caseNumber:manualClient.ccNumber,docketNumber:manualClient.docketNumber,date:manualDate,time:t,verifiedBy:"Manual Entry"});
+      caseNumber:manualClient.ccNumber,docketNumber:manualClient.docketNumber,date:manualDate,time:t,verifiedBy:"Manual Entry",status:"Present"});
     setManualDone(true); setViewDate(manualDate);
     setTimeout(()=>{ setManualClient(null); setManualQ(""); setManualDone(false); },2000);
   };
@@ -1315,13 +1478,16 @@ function AttendancePage({clients,recs,addRec}:{clients:Client[];recs:AttendanceR
               <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">Futronic FS64 — Right Thumb Only</div>
               <div onClick={state==="idle"?doScan:undefined}
                 className="relative w-44 h-44 rounded-3xl flex items-center justify-center mb-5 cursor-pointer select-none transition-all border-2 mt-4"
-                style={{background:state==="recorded"?"#f0fdf4":state==="duplicate"?"#fefce8":state==="notfound"?"#fef2f2":state==="scanning"||state==="confirm"?"#f0f9ff":"var(--input-background)",borderColor:state==="recorded"?"#16a34a":state==="duplicate"?"#ca8a04":state==="notfound"?"#dc2626":state==="scanning"||state==="confirm"?"var(--accent)":"var(--border)"}}>
+                style={{background:state==="recorded"?"#f0fdf4":state==="duplicate"?"#fefce8":state==="notfound"?"#fef2f2":state==="disconnected"?"#fef2f2":state==="scanning"||state==="confirm"?"#f0f9ff":state==="connecting"?"#f0f9ff":"var(--input-background)",borderColor:state==="recorded"?"#16a34a":state==="duplicate"?"#ca8a04":state==="notfound"?"#dc2626":state==="disconnected"?"#dc2626":state==="scanning"||state==="confirm"?"var(--accent)":state==="connecting"?"var(--accent)":"var(--border)"}}>
                 {(state==="scanning"||state==="confirm")&&<div className="absolute inset-0 rounded-3xl border-2 border-sky-400 animate-ping opacity-30" />}
-                <Fingerprint className={`w-24 h-24 transition-colors ${state==="recorded"?"text-emerald-500":state==="duplicate"?"text-amber-500":state==="notfound"?"text-red-400":state==="scanning"||state==="confirm"?"text-sky-500 animate-pulse":"text-muted-foreground"}`} />
+                {state==="connecting"&&<div className="absolute inset-0 rounded-3xl border-2 border-sky-400 animate-pulse opacity-40" />}
+                <Fingerprint className={`w-24 h-24 transition-colors ${state==="recorded"?"text-emerald-500":state==="duplicate"?"text-amber-500":state==="notfound"||state==="disconnected"?"text-red-400":state==="scanning"||state==="confirm"?"text-sky-500 animate-pulse":state==="connecting"?"text-sky-400 animate-pulse":"text-muted-foreground"}`} />
                 {state==="scanning"&&<div className="absolute left-6 right-6 h-0.5 bg-sky-400 opacity-80 rounded-full" style={{animation:"scanline 1.5s ease-in-out infinite"}} />}
               </div>
               {state==="idle"&&<><p className="text-sm font-semibold text-foreground mb-1">Ready to Scan</p><p className="text-xs text-muted-foreground mb-5">Client places <strong>right thumb</strong> on scanner</p><button onClick={doScan} className="w-full py-2.5 rounded text-sm font-bold text-white hover:opacity-90" style={{background:"var(--primary)"}}>Activate Scanner</button></>}
-              {state==="scanning"&&<><p className="text-sm font-bold text-sky-600 mb-1">Scanning…</p><p className="text-xs text-muted-foreground">Verifying fingerprint against database</p></>}
+              {state==="connecting"&&<><p className="text-sm font-bold text-sky-600 mb-1">Connecting to Scanner…</p><p className="text-xs text-muted-foreground mb-4">Checking if Futronic FS64 is connected</p><button onClick={cancelScan} className="w-full py-2.5 rounded text-sm font-bold bg-amber-500 text-white hover:opacity-90">Cancel</button></>}
+              {state==="scanning"&&<><p className="text-sm font-bold text-sky-600 mb-1">Scanner Active — Waiting for Finger</p><p className="text-xs text-muted-foreground mb-4">Place right thumb on the scanner</p><button onClick={cancelScan} className="w-full py-2.5 rounded text-sm font-bold bg-amber-500 text-white hover:opacity-90">Cancel Scan</button></>}
+              {state==="disconnected"&&<><div className="flex items-center gap-1.5 text-red-600 mb-2"><AlertCircle className="w-5 h-5" /><span className="text-sm font-bold">Scanner Not Connected</span></div><p className="text-xs text-muted-foreground mb-4">{scanError || "Please plug in the Futronic FS64 scanner and try again."}</p><button onClick={reset} className="w-full py-2 rounded text-xs font-bold border border-border text-foreground hover:bg-muted"><RefreshCw className="w-3.5 h-3.5 inline mr-1" />Try Again</button></>}
               {state==="confirm"&&<><p className="text-sm font-bold text-sky-600 mb-1">Match Found</p><p className="text-xs text-muted-foreground">Confirm attendance in the popup</p></>}
               {state==="recorded"&&matched&&<>
                 <div className="flex items-center gap-1.5 text-emerald-600 mb-2"><BadgeCheck className="w-5 h-5" /><span className="text-sm font-bold">Attendance Recorded</span></div>
@@ -1492,7 +1658,7 @@ function AttendancePage({clients,recs,addRec}:{clients:Client[];recs:AttendanceR
           </div>
         </div>
       )}
-      {infoClient&&<ClientInfoModal client={infoClient} recs={recs} onClose={()=>setInfoClient(null)} />}
+      {infoClient&&<ClientInfoModal client={infoClient} recs={recs} onClose={()=>setInfoClient(null)} updateRec={updateRec} addRec={addRec} />}
       <style>{`@keyframes scanline{0%,100%{top:22%;opacity:.9}50%{top:68%;opacity:1}}`}</style>
     </div>
   );
@@ -1669,7 +1835,7 @@ function exportPPAForm19(exportClients: Client[], year: number) {
   if (w) { w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400); }
 }
 
-function HistoryPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) {
+function HistoryPage({clients,recs,updateRec,addRec}:{clients:Client[];recs:AttendanceRecord[];updateRec?:(id:string,st:string)=>void;addRec?:(r:AttendanceRecord)=>void}) {
   const [selectedYear,setSelectedYear] = useState(YEAR);
   const [quarter,setQuarter] = useState<"Q1"|"Q2"|"Q3"|"Q4"|"All">("Q2");
   const [view,setView] = useState<"matrix"|"list">("matrix");
@@ -1875,7 +2041,7 @@ function HistoryPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) 
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map((c,ri)=>{
-                    const statuses=visibleMonths.map(mi=>cellStatus(c.clientId,mi,recs,selectedYear));
+                    const statuses=visibleMonths.map(mi=>cellStatus(c,mi,recs,selectedYear));
                     const presentCount=statuses.filter(s=>s==="P").length;
                     const st=supStatus(c);
                     return (
@@ -1962,7 +2128,7 @@ function HistoryPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) 
           </div>
         )}
       </div>
-      {infoClient&&<ClientInfoModal client={infoClient} recs={recs} onClose={()=>setInfoClient(null)} />}
+      {infoClient&&<ClientInfoModal client={infoClient} recs={recs} onClose={()=>setInfoClient(null)} updateRec={updateRec} addRec={addRec} />}
     </div>
   );
 }
@@ -1970,7 +2136,7 @@ function HistoryPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) 
 // ══════════════════════════════════════════════════════════════════════════════
 // DATABASE / SEARCH
 // ══════════════════════════════════════════════════════════════════════════════
-function SearchPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) {
+function SearchPage({clients,recs,updateRec,addRec}:{clients:Client[];recs:AttendanceRecord[];updateRec?:(id:string,st:string)=>void;addRec?:(r:AttendanceRecord)=>void}) {
   const [q,setQ] = useState("");
   const [fOfficer,setFOfficer] = useState("All");
   const [fCat,setFCat] = useState("All");
@@ -2072,7 +2238,7 @@ function SearchPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) {
           </div>
         </div>
       </div>
-      {modalClient&&<ClientInfoModal client={modalClient} recs={recs} onClose={()=>setModalClient(null)} />}
+      {modalClient&&<ClientInfoModal client={modalClient} recs={recs} onClose={()=>setModalClient(null)} updateRec={updateRec} addRec={addRec} />}
     </div>
   );
 }
@@ -2080,13 +2246,13 @@ function SearchPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) {
 // ══════════════════════════════════════════════════════════════════════════════
 // REPORTS
 // ══════════════════════════════════════════════════════════════════════════════
-function ReportsPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) {
+function ReportsPage({clients,recs,updateRec,addRec}:{clients:Client[];recs:AttendanceRecord[];updateRec?:(id:string,st:string)=>void;addRec?:(r:AttendanceRecord)=>void}) {
   const [type,setType] = useState<"monthly"|"daily"|"individual">("monthly");
   const [selClient,setSelClient] = useState(clients.find(c=>c.status==="Active")?.clientId??"");
   const [clientSearch,setClientSearch] = useState("");
   const [showClientDrop,setShowClientDrop] = useState(false);
   const active=clients.filter(c=>c.status==="Active");
-  const monthRows=MONTHLY_CHART_DATA.map(m=>({...m,absent:m.total-m.attended,rate:`${Math.round((m.attended/m.total)*100)}%`}));
+  const monthRows=getMonthlyChartData(clients, recs, YEAR).map(m=>({...m,absent:m.total-m.attended,rate:`${Math.round((m.attended/m.total)*100)}%`}));
   const dailyRows=[0,1,2,7].map(d=>{
     const dt=new Date(_today);dt.setDate(dt.getDate()-d);
     const ds=dt.toISOString().split("T")[0];
@@ -2132,7 +2298,7 @@ function ReportsPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) 
             <div className="lg:col-span-2 bg-card rounded border border-border p-5">
               <h3 className="text-xs font-bold text-foreground mb-4 uppercase tracking-wide">Attendance Trend {YEAR}</h3>
               <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={MONTHLY_CHART_DATA}>
+                <LineChart data={getMonthlyChartData(clients, recs, YEAR)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e4eaf2" />
                   <XAxis dataKey="month" tick={{fontSize:11,fill:"#5d7290",fontFamily:"JetBrains Mono"}} axisLine={false} tickLine={false} />
                   <YAxis tick={{fontSize:11,fill:"#5d7290",fontFamily:"JetBrains Mono"}} axisLine={false} tickLine={false} />
@@ -2251,7 +2417,7 @@ function ReportsPage({clients,recs}:{clients:Client[];recs:AttendanceRecord[]}) 
 // ══════════════════════════════════════════════════════════════════════════════
 // CLIENT MANAGEMENT
 // ══════════════════════════════════════════════════════════════════════════════
-function ManagementPage({clients,setClients,recs}:{clients:Client[];setClients:React.Dispatch<React.SetStateAction<Client[]>>;recs:AttendanceRecord[]}) {
+function ManagementPage({clients,setClients,recs,updateRec,addRec}:{clients:Client[];setClients:React.Dispatch<React.SetStateAction<Client[]>>;recs:AttendanceRecord[];updateRec?:(id:string,st:string)=>void;addRec?:(r:AttendanceRecord)=>void}) {
   const [showForm,setShowForm] = useState(false);
   const [editClient,setEditClient] = useState<Client|undefined>(undefined);
   const [viewClient,setViewClient] = useState<Client|null>(null);
@@ -2287,13 +2453,54 @@ function ManagementPage({clients,setClients,recs}:{clients:Client[];setClients:R
   });
 
   const saveClient=(c:Client)=>{
-    setClients(prev=>{const idx=prev.findIndex(x=>x.clientId===c.clientId);return idx>=0?prev.map(x=>x.clientId===c.clientId?c:x):[...prev,c];});
-    setShowForm(false);setEditClient(undefined);
+    const ccNumber = c.ccNumber || c.criminalCaseNumber;
+    c.ccNumber = ccNumber;
+    c.criminalCaseNumber = ccNumber;
+    fetch(import.meta.env.BASE_URL + 'api/save_client.php', {
+      method: 'POST',
+      body: JSON.stringify(c),
+      headers: {'Content-Type': 'application/json'}
+    })
+    .then(async (res) => {
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error("Invalid server response: " + text.substring(0, 100));
+      }
+    })
+    .then(res=>{
+      if(res.success){
+        const newClient = {...c, clientId: res.client_id || c.clientId};
+        setClients(prev=>{const idx=prev.findIndex(x=>x.clientId===newClient.clientId);return idx>=0?prev.map(x=>x.clientId===newClient.clientId?newClient:x):[...prev,newClient];});
+        setShowForm(false);setEditClient(undefined);
+      } else { alert("Failed to save: " + res.message); }
+    }).catch(err => {
+      alert("Client Registration Error: " + err.message);
+      console.error(err);
+    });
   };
-  const deleteClient=(id:string)=>{setClients(p=>p.filter(c=>c.clientId!==id));setDeleteId(null);};
-  const deleteAllInactive=()=>{setClients(p=>p.filter(c=>c.status==="Active"));setDeleteInactiveConfirm(false);};
-  const markStatus=(id:string,st:Client["status"])=>setClients(p=>p.map(c=>c.clientId===id?{...c,status:st}:c));
-
+  const deleteClient=(id:string)=>{
+    fetch(import.meta.env.BASE_URL + 'api/delete_client.php', { method: 'POST', body: JSON.stringify({clientId: id}) })
+      .then(res=>res.json()).then(res=>{
+        if(res.success){ setClients(p=>p.filter(c=>c.clientId!==id)); setDeleteId(null); }
+      });
+  };
+  const deleteAllInactive=()=>{
+    const inactive = clients.filter(c=>c.status!=="Active");
+    Promise.all(inactive.map(c=>fetch(import.meta.env.BASE_URL + 'api/delete_client.php', { method: 'POST', body: JSON.stringify({clientId: c.clientId}) })))
+      .then(() => { setClients(p=>p.filter(c=>c.status==="Active")); setDeleteInactiveConfirm(false); });
+  };
+  const markStatus=(id:string,st:Client["status"])=>{
+    const c = clients.find(x=>x.clientId===id);
+    if(c){
+      const nc = {...c, status: st};
+      fetch(import.meta.env.BASE_URL + 'api/save_client.php', { method: 'POST', body: JSON.stringify(nc) })
+        .then(res=>res.json()).then(res=>{
+          if(res.success) setClients(p=>p.map(x=>x.clientId===id?nc:x));
+        });
+    }
+  };
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <Topbar title="Client Management" sub="CRUD — add, edit, and manage all client records" />
@@ -2403,7 +2610,7 @@ function ManagementPage({clients,setClients,recs}:{clients:Client[];setClients:R
         </div>
       </div>
       {showForm&&<ClientFormModal client={editClient} onSave={saveClient} onClose={()=>{setShowForm(false);setEditClient(undefined);}} nextId={nextId} />}
-      {viewClient&&<ClientInfoModal client={viewClient} recs={recs} onClose={()=>setViewClient(null)} onEdit={()=>{setEditClient(viewClient);setViewClient(null);setShowForm(true);}} />}
+      {viewClient&&<ClientInfoModal client={viewClient} recs={recs} onClose={()=>setViewClient(null)} onEdit={()=>{setEditClient(viewClient);setViewClient(null);setShowForm(true);}} updateRec={updateRec} addRec={addRec} />}
       {deleteId&&(
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-lg border border-border p-6 w-full max-w-sm">
@@ -2437,11 +2644,39 @@ function ManagementPage({clients,setClients,recs}:{clients:Client[];setClients:R
 // ══════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [page,setPage] = useState<Page>("login");
-  const [clients,setClients] = useState<Client[]>(INITIAL_CLIENTS);
-  const [recs,setRecs] = useState<AttendanceRecord[]>(buildInitialAttendance);
+  const [clients,setClients] = useState<Client[]>([]);
+  const [recs,setRecs] = useState<AttendanceRecord[]>([]);
   const [collapsed,setCollapsed] = useState(false);
 
-  const addRec=(r:AttendanceRecord)=>setRecs(p=>[r,...p]);
+  useEffect(() => {
+    fetch(import.meta.env.BASE_URL + 'api/get_data.php')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setClients(data.clients);
+          setRecs(data.attendance);
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
+  const addRec=(r:AttendanceRecord)=>{
+    setRecs(p=>[r,...p]);
+    fetch(import.meta.env.BASE_URL + 'api/add_attendance.php', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(r)
+    }).catch(err => console.error(err));
+  };
+
+  const updateRec=(id:string, status:string)=>{
+    setRecs(p=>p.map(r=>r.attendanceId===id ? {...r, status} : r));
+    fetch(import.meta.env.BASE_URL + 'api/update_attendance.php', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({attendanceId: id, status})
+    }).catch(err => console.error(err));
+  };
 
   if (page==="login") return (
     <div style={{fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
@@ -2454,11 +2689,11 @@ export default function App() {
       <Sidebar page={page} setPage={setPage} onLogout={()=>setPage("login")} collapsed={collapsed} setCollapsed={setCollapsed} />
       <main className="flex-1 flex flex-col overflow-hidden">
         {page==="dashboard"  && <DashboardPage  clients={clients} recs={recs} setPage={setPage} />}
-        {page==="attendance" && <AttendancePage clients={clients} recs={recs} addRec={addRec} />}
-        {page==="history"    && <HistoryPage    clients={clients} recs={recs} />}
-        {page==="search"     && <SearchPage     clients={clients} recs={recs} />}
-        {page==="reports"    && <ReportsPage    clients={clients} recs={recs} />}
-        {page==="management" && <ManagementPage clients={clients} setClients={setClients} recs={recs} />}
+        {page==="attendance" && <AttendancePage clients={clients} recs={recs} addRec={addRec} updateRec={updateRec} />}
+        {page==="history"    && <HistoryPage    clients={clients} recs={recs} updateRec={updateRec} addRec={addRec} />}
+        {page==="search"     && <SearchPage     clients={clients} recs={recs} updateRec={updateRec} addRec={addRec} />}
+        {page==="reports"    && <ReportsPage    clients={clients} recs={recs} updateRec={updateRec} addRec={addRec} />}
+        {page==="management" && <ManagementPage clients={clients} setClients={setClients} recs={recs} updateRec={updateRec} addRec={addRec} />}
       </main>
     </div>
   );
