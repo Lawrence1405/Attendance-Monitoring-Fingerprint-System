@@ -17,3 +17,25 @@
 [10:29:29] Received: {"action":"start_scan"}
 [10:29:32] Scan cancelled.
 [10:29:32] Client disconnected.
+[10:31:17] StartAsync called — using TcpListener
+[10:31:17] TcpListener started on port 5000
+[10:31:22] WebSocket client connected
+[10:31:22] Client connected.
+[10:31:22] Received: {"action":"start_scan"}
+[10:31:31] Received: {"action":"stop_scan"}
+[10:31:31] Scan cancelled.
+[10:31:32] Received: {"action":"start_scan"}
+[10:31:37] Received: {"action":"stop_scan"}
+[10:31:37] Scan cancelled.
+[10:32:02] Received: {"action":"start_scan"}
+[10:32:05] Received: {"action":"stop_scan"}
+[10:32:05] Scan cancelled.
+[10:32:08] Received: {"action":"start_scan"}
+[10:32:29] Received: {"action":"stop_scan"}
+[10:32:29] Scan cancelled.
+[10:32:30] Received: {"action":"start_scan"}
+[10:32:48] Received: {"action":"stop_scan"}
+[10:32:48] Scan cancelled.
+[10:32:48] Received: {"action":"start_scan"}
+[10:34:00] StartAsync called — using TcpListener
+[10:34:00] Failed to start TcpListener: SocketException: An attempt was made to access a socket in a way forbidden by its access permissions.

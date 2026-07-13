@@ -32,12 +32,12 @@
   </ItemGroup>
 
   <!--
-    Copy ftrScanAPI.dll (bundled in the project root) next to the .exe at build time.
-    The DLL is included directly in this folder so the project builds on any device
-    without needing the Enrollment Kit installed in a specific location.
+    Copy ftrScanAPI.dll and all its dependent DLLs (bundled in the project root) 
+    next to the .exe at build time. The DLLs are included directly in this folder 
+    so the project builds and runs on any device without needing the Enrollment Kit.
   -->
   <ItemGroup>
-    <Content Include="ftrScanAPI.dll">
+    <Content Include="ftr*.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

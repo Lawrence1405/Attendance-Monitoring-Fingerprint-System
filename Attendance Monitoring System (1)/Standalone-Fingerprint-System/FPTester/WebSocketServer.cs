@@ -150,7 +150,7 @@ namespace FPTester
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
                         await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed", CancellationToken.None);
-                        StopScan();
+                        StopAllScans();
                     }
                     else
                     {
@@ -168,7 +168,7 @@ namespace FPTester
                                 }
                                 else if (action == "stop_scan")
                                 {
-                                    StopScan();
+                                    StopAllScans();
                                 }
                                 else if (action == "enroll_fingerprint")
                                 {
@@ -190,7 +190,7 @@ namespace FPTester
             catch (Exception ex)
             {
                 Log($"WebSocket error: {ex.Message}");
-                StopScan();
+                StopAllScans();
             }
             finally
             {
@@ -200,19 +200,19 @@ namespace FPTester
             }
         }
 
-        private void StopScan()
+        public void StopAllScans()
         {
             if (_scanCts != null)
             {
                 _scanCts.Cancel();
                 _scanCts = null;
-                Log("Scan cancelled.");
+                Log("Scan cancelled by GUI or socket closure.");
             }
         }
 
         private async Task StartScanAsync(WebSocket webSocket)
         {
-            StopScan(); // Stop any existing scan
+            StopAllScans(); // Stop any existing scan
             _scanCts = new CancellationTokenSource();
             var token = _scanCts.Token;
 
@@ -296,7 +296,7 @@ namespace FPTester
 
         private async Task EnrollFingerprintAsync(WebSocket webSocket, string clientId)
         {
-            StopScan();
+            StopAllScans();
             _scanCts = new CancellationTokenSource();
             var token = _scanCts.Token;
 

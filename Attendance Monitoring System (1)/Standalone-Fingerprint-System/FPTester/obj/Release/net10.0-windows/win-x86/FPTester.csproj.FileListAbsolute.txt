@@ -291,3 +291,7 @@ C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-Syste
 C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\bin\Release\net10.0-windows\win-x86\K4os.Hash.xxHash.dll
 C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\bin\Release\net10.0-windows\win-x86\MySql.Data.dll
 C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\bin\Release\net10.0-windows\win-x86\ZstdSharp.dll
+C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\bin\Release\net10.0-windows\win-x86\ftrBiomdi.dll
+C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\bin\Release\net10.0-windows\win-x86\ftrMathAPI.dll
+C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\bin\Release\net10.0-windows\win-x86\ftrNBIS.dll
+C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\bin\Release\net10.0-windows\win-x86\ftrWSQ.dll

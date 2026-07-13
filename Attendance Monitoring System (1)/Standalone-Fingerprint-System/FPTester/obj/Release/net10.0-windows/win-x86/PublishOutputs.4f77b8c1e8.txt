@@ -1,5 +1,9 @@
 C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\FPTester.exe
+C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\ftrBiomdi.dll
+C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\ftrMathAPI.dll
+C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\ftrNBIS.dll
 C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\ftrScanAPI.dll
+C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\ftrWSQ.dll
 C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\FPTester.dll
 C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\FPTester.deps.json
 C:\Users\Dale Barro\Desktop\PPA-Attendance github\PPA-Automatic-Attendance-System\Standalone-Fingerprint-System\FPTester\publish\FPTester.runtimeconfig.json

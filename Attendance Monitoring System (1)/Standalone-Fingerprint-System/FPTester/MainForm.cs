@@ -554,11 +554,25 @@ namespace FPTester
             btnConnect.Enabled = false;
             try
             {
-                if (_scanner.IsOpen)
+                bool uiThinksItsConnected = (btnConnect.Text == "Disconnect");
+
+                if (_scanner.IsOpen && uiThinksItsConnected)
                 {
+                    // The user explicitly wants to disconnect
+                    // We must tell the WebSocket server to stop scanning first, 
+                    // otherwise CloseAsync might queue behind a 15-second CaptureAsync block!
+                    _wsServer.StopAllScans(); 
                     await _scanner.CloseAsync();
                     SetDeviceLabel(false);
                     Log("Scanner disconnected.", C_MUTED);
+                }
+                else if (_scanner.IsOpen && !uiThinksItsConnected)
+                {
+                    // The WebSocket server already opened it in the background!
+                    // Just update the GUI to reflect the true state.
+                    SetDeviceLabel(true);
+                    Log("Scanner is already connected by the web service.", C_GREEN);
+                    SetStage("Ready");
                 }
                 else
                 {

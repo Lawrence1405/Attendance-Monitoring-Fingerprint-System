@@ -18,11 +18,10 @@ namespace FPTester
     /// </summary>
     internal static class FutronicScanAPI
     {
-        // Full path — Enrollment Kit 2025 version (works on modern Windows).
-        // SDK 4.2's ftrScanAPI.dll is NOT used — it causes device failure.
-        private const string DLL =
-            @"C:\Users\Dale Barro\Downloads\FS6x_Enrollment_Kit_2025.11.06\" +
-            @"FS6x_Enrollment_Kit_2025.11.06\ftrScanAPI.dll";
+        // Because we bundle ftrScanAPI.dll (and its dependencies) next to the .exe,
+        // we can just use the relative filename. Windows will automatically find it 
+        // in the application's base directory.
+        private const string DLL = "ftrScanAPI.dll";
 
         // ── Device lifecycle ──────────────────────────────────────────────────
         [DllImport(DLL, CallingConvention = CallingConvention.StdCall)]
