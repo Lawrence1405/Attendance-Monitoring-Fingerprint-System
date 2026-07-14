@@ -47,6 +47,7 @@ interface Client {
   fingerprintId: string;
   fingerprintEnrolled: boolean;
   fingerprintEnrollmentDate: string;
+  fingerprintImage?: string;
   // Personal Profile (PPA Form 12)
   piNumber: string;
   alias: string;
@@ -121,7 +122,7 @@ const _pp = (overrides: Partial<Client>): Omit<Client,"clientId"|"photoInitial">
   supervisionPhase:"Phase 1",registrationDate:"2021-01-01",status:"Active",caseType:"Non-Drug",remarks:"",
   finalReport:"",finalReportDate:"",terminationDate:"",violationReport:"",violationDate:"",
   courtOrderDisposition:"",courtOrderDateSubmitted:"",courtOrderDateReceived:"",
-  fingerprintId:"",fingerprintEnrolled:false,fingerprintEnrollmentDate:"",
+  fingerprintId:"",fingerprintEnrolled:false,fingerprintEnrollmentDate:"",fingerprintImage:"",
   piNumber:"",alias:"",identifyingMarks:"",address:"",barangay:"",contactNumber:"",
   dateOfBirth:"",placeOfBirth:"",civilStatus:"Single",spouseName:"",numberOfDependents:"0",
   educationalAttainment:"",occupation:"",monthlyIncome:"",hobbies:"",skills:"",religiousAffiliation:"",
@@ -451,7 +452,9 @@ function ClientInfoModal({client,recs,onClose,onEdit,updateRec,addRec}:{client:C
         setFpStatus(res.status);
       } else if (res.success) {
         setFpStatus("success");
-        setTimeout(() => window.location.reload(), 1500);
+        alert("Fingerprint successfully " + (fpAction === "remove" ? "removed" : "enrolled") + " for " + client.fullName);
+        window.dispatchEvent(new Event("refreshData"));
+        setTimeout(() => setFpStatus(null), 1500);
       } else {
         setFpError(res.error || "An unknown error occurred.");
         setFpStatus(null);
@@ -707,6 +710,14 @@ function ClientInfoModal({client,recs,onClose,onEdit,updateRec,addRec}:{client:C
                   {!client.fingerprintEnrolled && <p className="text-xs text-amber-700 mt-1">This client cannot use fingerprint attendance until enrolled.</p>}
                 </div>
               </div>
+              {client.fingerprintEnrolled && client.fingerprintImage && (
+                <div className="bg-card border rounded p-4 flex flex-col items-center">
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-3">Enrolled Fingerprint Image</p>
+                  <div className="w-32 h-40 bg-white border border-border p-1 rounded-sm shadow-sm flex items-center justify-center">
+                    <img src={`data:image/png;base64,${client.fingerprintImage}`} alt="Fingerprint" className="w-full h-full object-contain filter contrast-125 grayscale" />
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Fingerprint Actions</p>
                 {!client.fingerprintEnrolled && (
@@ -775,7 +786,7 @@ const BLANK: Omit<Client,"clientId"|"photoInitial"> = {
   supervisionPhase:"Phase 1",registrationDate:todayStr,status:"Active",caseType:"Non-Drug",remarks:"",
   finalReport:"",finalReportDate:"",terminationDate:"",violationReport:"",violationDate:"",
   courtOrderDisposition:"",courtOrderDateSubmitted:"",courtOrderDateReceived:"",
-  fingerprintId:"",fingerprintEnrolled:false,fingerprintEnrollmentDate:"",
+  fingerprintId:"",fingerprintEnrolled:false,fingerprintEnrollmentDate:"",fingerprintImage:"",
   piNumber:"",alias:"",identifyingMarks:"",address:"",barangay:"",contactNumber:"",
   dateOfBirth:"",placeOfBirth:"",civilStatus:"Single",spouseName:"",numberOfDependents:"0",
   educationalAttainment:"",occupation:"",monthlyIncome:"",hobbies:"",skills:"",religiousAffiliation:"",
@@ -949,9 +960,9 @@ function ClientFormModal({client,onSave,onClose,nextId}:{client?:Client;onSave:(
 // ══════════════════════════════════════════════════════════════════════════════
 // LOGIN
 // ══════════════════════════════════════════════════════════════════════════════
-function LoginPage({onLogin}:{onLogin:()=>void}) {
-  const [user,setUser] = useState("admin");
-  const [pass,setPass] = useState("password");
+function LoginPage({onLogin}:{onLogin:(user:any)=>void}) {
+  const [user,setUser] = useState("");
+  const [pass,setPass] = useState("");
   const [err,setErr] = useState("");
   return (
     <div className="min-h-screen flex bg-background">
@@ -985,7 +996,26 @@ function LoginPage({onLogin}:{onLogin:()=>void}) {
             <h1 className="text-xl font-bold text-foreground">Sign In</h1>
             <p className="text-xs text-muted-foreground mt-1">Authorized personnel only</p>
           </div>
-          <form onSubmit={e=>{e.preventDefault();if(user&&pass)onLogin();else setErr("Enter credentials.");}} className="space-y-4">
+          <form onSubmit={async e=>{
+            e.preventDefault();
+            if(!user||!pass){setErr("Enter credentials.");return;}
+            try {
+              const res = await fetch(import.meta.env.BASE_URL + 'api/login.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                credentials: 'include',
+                body: JSON.stringify({username: user, password: pass})
+              });
+              const data = await res.json();
+              if (data.success) {
+                onLogin(data.user);
+              } else {
+                setErr(data.message || "Login failed.");
+              }
+            } catch (err) {
+              setErr("Network error.");
+            }
+          }} className="space-y-4">
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Username</label>
               <input value={user} onChange={e=>{setUser(e.target.value);setErr("");}}
@@ -1448,6 +1478,7 @@ function AttendancePage({clients,recs,addRec,updateRec}:{clients:Client[];recs:A
     addRec({attendanceId:`ATT-NEW-${Date.now()}`,clientId:matched.clientId,fullName:matched.fullName,
       caseNumber:matched.ccNumber,docketNumber:matched.docketNumber,date:todayStr,time:pendingTime,verifiedBy:"Futronic FS64",status:"Present"});
     setState("recorded");
+    alert("Attendance recorded successfully for " + matched.fullName);
   };
 
   const reset = () => { setState("idle"); setMatched(null); setPendingTime(""); };
@@ -2458,6 +2489,7 @@ function ManagementPage({clients,setClients,recs,updateRec,addRec}:{clients:Clie
     c.criminalCaseNumber = ccNumber;
     fetch(import.meta.env.BASE_URL + 'api/save_client.php', {
       method: 'POST',
+      credentials: 'include',
       body: JSON.stringify(c),
       headers: {'Content-Type': 'application/json'}
     })
@@ -2481,21 +2513,21 @@ function ManagementPage({clients,setClients,recs,updateRec,addRec}:{clients:Clie
     });
   };
   const deleteClient=(id:string)=>{
-    fetch(import.meta.env.BASE_URL + 'api/delete_client.php', { method: 'POST', body: JSON.stringify({clientId: id}) })
+    fetch(import.meta.env.BASE_URL + 'api/delete_client.php', { method: 'POST', credentials: 'include', body: JSON.stringify({clientId: id}) })
       .then(res=>res.json()).then(res=>{
         if(res.success){ setClients(p=>p.filter(c=>c.clientId!==id)); setDeleteId(null); }
       });
   };
   const deleteAllInactive=()=>{
     const inactive = clients.filter(c=>c.status!=="Active");
-    Promise.all(inactive.map(c=>fetch(import.meta.env.BASE_URL + 'api/delete_client.php', { method: 'POST', body: JSON.stringify({clientId: c.clientId}) })))
+    Promise.all(inactive.map(c=>fetch(import.meta.env.BASE_URL + 'api/delete_client.php', { method: 'POST', credentials: 'include', body: JSON.stringify({clientId: c.clientId}) })))
       .then(() => { setClients(p=>p.filter(c=>c.status==="Active")); setDeleteInactiveConfirm(false); });
   };
   const markStatus=(id:string,st:Client["status"])=>{
     const c = clients.find(x=>x.clientId===id);
     if(c){
       const nc = {...c, status: st};
-      fetch(import.meta.env.BASE_URL + 'api/save_client.php', { method: 'POST', body: JSON.stringify(nc) })
+      fetch(import.meta.env.BASE_URL + 'api/save_client.php', { method: 'POST', credentials: 'include', body: JSON.stringify(nc) })
         .then(res=>res.json()).then(res=>{
           if(res.success) setClients(p=>p.map(x=>x.clientId===id?nc:x));
         });
@@ -2647,17 +2679,36 @@ export default function App() {
   const [clients,setClients] = useState<Client[]>([]);
   const [recs,setRecs] = useState<AttendanceRecord[]>([]);
   const [collapsed,setCollapsed] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
 
   useEffect(() => {
-    fetch(import.meta.env.BASE_URL + 'api/get_data.php')
+    fetch(import.meta.env.BASE_URL + 'api/check_session.php', { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          setClients(data.clients);
-          setRecs(data.attendance);
+          setCurrentUser(data.user);
+          setPage("dashboard");
         }
+        setLoadingSession(false);
       })
-      .catch(err => console.error(err));
+      .catch(() => setLoadingSession(false));
+
+    const refreshData = () => {
+      fetch(import.meta.env.BASE_URL + 'api/get_data.php', { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setClients(data.clients);
+            setRecs(data.attendance);
+          }
+        })
+        .catch(err => console.error(err));
+    };
+
+    window.addEventListener("refreshData", refreshData);
+    refreshData();
+    return () => window.removeEventListener("refreshData", refreshData);
   }, []);
 
   const addRec=(r:AttendanceRecord)=>{
@@ -2665,6 +2716,7 @@ export default function App() {
     fetch(import.meta.env.BASE_URL + 'api/add_attendance.php', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
       body: JSON.stringify(r)
     }).catch(err => console.error(err));
   };
@@ -2674,19 +2726,27 @@ export default function App() {
     fetch(import.meta.env.BASE_URL + 'api/update_attendance.php', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
       body: JSON.stringify({attendanceId: id, status})
     }).catch(err => console.error(err));
   };
 
+  if (loadingSession) return <div className="flex h-screen items-center justify-center bg-background"><p className="text-muted-foreground text-sm font-semibold">Loading AMS...</p></div>;
+
   if (page==="login") return (
     <div style={{fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
-      <LoginPage onLogin={()=>setPage("dashboard")} />
+      <LoginPage onLogin={(u)=>{setCurrentUser(u);setPage("dashboard");}} />
     </div>
   );
 
   return (
     <div className="flex h-screen overflow-hidden bg-background" style={{fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
-      <Sidebar page={page} setPage={setPage} onLogout={()=>setPage("login")} collapsed={collapsed} setCollapsed={setCollapsed} />
+      <Sidebar page={page} setPage={setPage} onLogout={()=>{
+        fetch(import.meta.env.BASE_URL + 'api/logout.php', {credentials: 'include'}).then(()=>{
+          setCurrentUser(null);
+          setPage("login");
+        });
+      }} collapsed={collapsed} setCollapsed={setCollapsed} />
       <main className="flex-1 flex flex-col overflow-hidden">
         {page==="dashboard"  && <DashboardPage  clients={clients} recs={recs} setPage={setPage} />}
         {page==="attendance" && <AttendancePage clients={clients} recs={recs} addRec={addRec} updateRec={updateRec} />}

@@ -35,6 +35,7 @@ try {
         court_order_date_received DATE NULL,
         fingerprint_id VARCHAR(50),
         fingerprint_template LONGTEXT,
+        fingerprint_image LONGTEXT,
         fingerprint_enrolled TINYINT(1) DEFAULT 0,
         fingerprint_enrollment_date DATE NULL,
         pi_number VARCHAR(100),
@@ -85,9 +86,36 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     $pdo->exec($sql_attendance);
 
+    // Create users table
+    $sql_users = "CREATE TABLE IF NOT EXISTS users (
+        user_id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(50) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255) NOT NULL,
+        status VARCHAR(50) DEFAULT 'Active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    $pdo->exec($sql_users);
+
+    // Seed default admin user if no users exist
+    $stmt = $pdo->query("SELECT COUNT(*) FROM users");
+    if ($stmt->fetchColumn() == 0) {
+        $admin_password_hash = password_hash('admin123', PASSWORD_BCRYPT);
+        $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, full_name, status) VALUES (?, ?, ?, ?)");
+        $stmt->execute(['admin', $admin_password_hash, 'System Administrator', 'Active']);
+    }
+
     // Add status column to existing table if it doesn't exist
     try {
         $pdo->exec("ALTER TABLE attendance_records ADD COLUMN status VARCHAR(50) DEFAULT 'Present'");
+    } catch (PDOException $e) {
+        // column likely exists, ignore
+    }
+
+    // Add fingerprint_image column to existing clients table if it doesn't exist
+    try {
+        $pdo->exec("ALTER TABLE clients ADD COLUMN fingerprint_image LONGTEXT");
     } catch (PDOException $e) {
         // column likely exists, ignore
     }

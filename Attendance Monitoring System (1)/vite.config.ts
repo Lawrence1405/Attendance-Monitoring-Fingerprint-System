@@ -36,7 +36,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost/Attendance-Monitoring-Fingerprint-System-Lawrence1405-patch-1-07-08-26-',
+        target: 'http://localhost/AMS/Attendance-Monitoring-Fingerprint-System/Attendance%20Monitoring%20System%20(1)',
         changeOrigin: true,
       },
     },

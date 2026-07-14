@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("FPTester")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1fcff461d9777e70374aaa9ea75ec02d6acd1be9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+710c3d728ed9549641e676cb36899bf61244b7c3")]
 [assembly: System.Reflection.AssemblyProductAttribute("FPTester")]
 [assembly: System.Reflection.AssemblyTitleAttribute("FPTester")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

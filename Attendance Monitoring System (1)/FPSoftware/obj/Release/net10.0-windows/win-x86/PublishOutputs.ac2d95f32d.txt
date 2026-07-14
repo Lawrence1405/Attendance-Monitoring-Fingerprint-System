@@ -1,0 +1,2 @@
+C:\xampp\htdocs\AMS\Attendance-Monitoring-Fingerprint-System\Attendance Monitoring System (1)\FPSoftware\publish\FPTester.pdb
+C:\xampp\htdocs\AMS\Attendance-Monitoring-Fingerprint-System\Attendance Monitoring System (1)\FPSoftware\publish\FPTester.exe

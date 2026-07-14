@@ -236,7 +236,9 @@ namespace FPTester
                 var template = new FingerprintTemplate(new FingerprintImage(_scanner.ImageWidth, _scanner.ImageHeight, image, new FingerprintImageOptions { Dpi = 500 }));
                 byte[] templateBytes = template.ToByteArray();
 
-                bool saved = _dbStore.SaveTemplate(clientId, templateBytes);
+                string base64Image = CreateBase64Image(image, _scanner.ImageWidth, _scanner.ImageHeight);
+
+                bool saved = _dbStore.SaveTemplate(clientId, templateBytes, base64Image);
 
                 if (saved)
                 {
@@ -281,6 +283,37 @@ namespace FPTester
             string json = JsonSerializer.Serialize(data);
             var bytes = Encoding.UTF8.GetBytes(json);
             await webSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+        private string CreateBase64Image(byte[] rawPixels, int width, int height)
+        {
+            using (var bmp = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format8bppIndexed))
+            {
+                System.Drawing.Imaging.ColorPalette pal = bmp.Palette;
+                for (int i = 0; i < 256; i++)
+                    pal.Entries[i] = System.Drawing.Color.FromArgb(255, i, i, i);
+                bmp.Palette = pal;
+
+                var data = bmp.LockBits(new System.Drawing.Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format8bppIndexed);
+                
+                if (data.Stride == width)
+                {
+                    System.Runtime.InteropServices.Marshal.Copy(rawPixels, 0, data.Scan0, rawPixels.Length);
+                }
+                else
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        System.Runtime.InteropServices.Marshal.Copy(rawPixels, y * width, data.Scan0 + y * data.Stride, width);
+                    }
+                }
+                bmp.UnlockBits(data);
+
+                using (var ms = new System.IO.MemoryStream())
+                {
+                    bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    return Convert.ToBase64String(ms.ToArray());
+                }
+            }
         }
     }
 }

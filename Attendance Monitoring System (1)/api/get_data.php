@@ -36,6 +36,7 @@ try {
             "fingerprintId" => $row['fingerprint_id'] ?? "",
             "fingerprintEnrolled" => (bool)$row['fingerprint_enrolled'],
             "fingerprintEnrollmentDate" => $row['fingerprint_enrollment_date'] ?? "",
+            "fingerprintImage" => $row['fingerprint_image'] ?? "",
             "piNumber" => $row['pi_number'] ?? "",
             "alias" => $row['alias'] ?? "",
             "identifyingMarks" => $row['identifying_marks'] ?? "",

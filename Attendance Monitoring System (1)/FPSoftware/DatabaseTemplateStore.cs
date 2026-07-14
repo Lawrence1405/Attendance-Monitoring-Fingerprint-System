@@ -47,7 +47,7 @@ namespace FPTester
 
             return templates;
         }
-        public bool SaveTemplate(string clientId, byte[] templateBytes)
+        public bool SaveTemplate(string clientId, byte[] templateBytes, string base64Image)
         {
             try
             {
@@ -55,11 +55,12 @@ namespace FPTester
                 {
                     connection.Open();
                     string base64 = Convert.ToBase64String(templateBytes);
-                    string query = "UPDATE clients SET fingerprint_template = @base64, fingerprint_enrolled = 1, fingerprint_enrollment_date = CURDATE() WHERE client_id = @clientId";
+                    string query = "UPDATE clients SET fingerprint_template = @base64, fingerprint_image = @image, fingerprint_enrolled = 1, fingerprint_enrollment_date = CURDATE() WHERE client_id = @clientId";
                     
                     using (var command = new MySqlCommand(query, connection))
                     {
                         command.Parameters.AddWithValue("@base64", base64);
+                        command.Parameters.AddWithValue("@image", base64Image);
                         command.Parameters.AddWithValue("@clientId", clientId);
                         return command.ExecuteNonQuery() > 0;
                     }
@@ -79,7 +80,7 @@ namespace FPTester
                 using (var connection = new MySqlConnection(_connectionString))
                 {
                     connection.Open();
-                    string query = "UPDATE clients SET fingerprint_template = NULL, fingerprint_enrolled = 0, fingerprint_enrollment_date = NULL WHERE client_id = @clientId";
+                    string query = "UPDATE clients SET fingerprint_template = NULL, fingerprint_image = NULL, fingerprint_enrolled = 0, fingerprint_enrollment_date = NULL WHERE client_id = @clientId";
                     
                     using (var command = new MySqlCommand(query, connection))
                     {
